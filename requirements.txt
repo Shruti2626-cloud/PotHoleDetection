@@ -1,0 +1,6 @@
+opencv-python
+ultralytics
+filterpy
+scipy
+matplotlib
+scikit-image

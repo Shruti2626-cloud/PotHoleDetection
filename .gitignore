@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+env/
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# Project Outputs
+*.mp4
+*.csv
+output/
+
+# Models (Optional: un-comment if you want to commit models)
+# *.pt
