@@ -2,6 +2,10 @@ import cv2
 import os
 import glob
 import csv
+import urllib.request
+import json
+import time
+import math
 from typing import List, Tuple, Dict, Set
 
 from pothole_detection.detector import PotholeDetector
@@ -22,23 +26,91 @@ OUTPUT_VIDEO_PATH = os.path.join(OUTPUTS_DIR, 'videos', 'output_pothole_detectio
 LOG_PATH = os.path.join(OUTPUTS_DIR, 'logs', 'pothole_log.csv')
 
 # Detection / Tracking Parameters
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.25  # LOCKED by user requirement
 TRACKER_MAX_AGE = 30
 TRACKER_MIN_HITS = 3
 TRACKER_IOU_THRESH = 0.3
+
+# Physics / Sensor Parameters
+J_MIN = 0.0
+J_MAX = 20.0
+SENSOR_URL = "http://192.168.4.1/sensors"  # Placeholder URL for ESP32
+
 
 # Visualization
 REFERENCE_LINE_RATIO = 0.75  # Position of line (0.0 to 1.0)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def calculate_severity(w: int, h: int, W: int, H: int) -> float:
+def get_sensor_burst(url: str, burst_count: int = 5) -> Tuple[float, str, str, float, float]:
     """
-    Calculates the severity of a pothole based on its normalized area.
-    Formula: min(1.0, (w*h)/(W*H) / 0.08)
+    Fetches a burst of sensor data to compute peak jerk and get RTC time.
+    Returns: (peak_jerk, date_str, time_str, lat, lon)
     """
-    normalized_area = (w * h) / (W * H)
-    severity = min(1.0, normalized_area / 0.08)
+    accel_magnitudes = []
+    timestamps = []
+    
+    last_date = "2000-01-01"
+    last_time = "00:00:00"
+    last_lat = 0.0
+    last_lon = 0.0
+
+    # FALLBACK defaults for when hardware is not present
+    fallback_date = time.strftime("%Y-%m-%d")
+    fallback_time = time.strftime("%H:%M:%S")
+
+    print(f"  > Querying sensors (Burst {burst_count})...")
+    
+    for _ in range(burst_count):
+        try:
+            # Mocking the request for the script to run without live hardware
+            # In production, uncomment the following lines:
+            # with urllib.request.urlopen(url, timeout=0.5) as response:
+            #     data = json.loads(response.read().decode())
+            #     ax, ay, az = data['ax'], data['ay'], data['az']
+            #     accel_magnitudes.append(math.sqrt(ax**2 + ay**2 + az**2))
+            #     last_date = data['date']
+            #     last_time = data['time']
+            #     last_lat = data['lat']
+            #     last_lon = data['lon']
+            
+            # Simulated Data for Logic Verification
+            accel_magnitudes.append(9.8 + (0.5 * _)) # Simulate slight movement
+            last_date = fallback_date
+            last_time = fallback_time
+            time.sleep(0.05) # Small delay between samples
+            
+        except Exception as e:
+            # print(f"Sensor read error: {e}")
+            pass
+
+    # Compute Jerk
+    if len(accel_magnitudes) < 2:
+        peak_jerk = 0.0
+    else:
+        jerks = []
+        dt = 0.05 # Assumed fixed dt for burst
+        for i in range(1, len(accel_magnitudes)):
+            j = abs(accel_magnitudes[i] - accel_magnitudes[i-1]) / dt
+            jerks.append(j)
+        peak_jerk = max(jerks) if jerks else 0.0
+
+    return peak_jerk, last_date, last_time, last_lat, last_lon
+
+
+def calculate_severity(confidence: float, jerk: float) -> float:
+    """
+    Calculates severity based on ML confidence (Primary) and Jerk (Secondary).
+    Formula: 0.7 * confidence + 0.3 * (jerk_norm ^ 2)
+    """
+    # Normalize Jerk
+    jerk_norm = (jerk - J_MIN) / (J_MAX - J_MIN)
+    jerk_norm = max(0.0, min(1.0, jerk_norm)) # Clamp 0-1
+    
+    if confidence < CONF_THRESHOLD:
+        return 0.0
+        
+    severity = 0.7 * confidence + 0.3 * (jerk_norm ** 2)
     return round(severity, 2)
 
 
@@ -143,10 +215,14 @@ def main():
     
     csv_file = open(LOG_PATH, 'w', newline='')
     csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(['hole_id', 'severity', 'confidence'])
+    # UPDATED CSV HEADER
+    csv_writer.writerow(['date', 'time', 'frame_id', 'pothole_id', 'confidence', 
+                         'bounding_box_area', 'aspect_ratio', 'peak_jerk', 'severity', 
+                         'latitude', 'longitude'])
 
     # State variables
     logged_ids = set()
+    track_history = {} # For temporal persistence check (Dumper rejection)
     final_severities = {}
     track_id_colors = {}
     ref_y = int(REFERENCE_LINE_RATIO * height)
@@ -177,16 +253,43 @@ def main():
             x1, y1, x2, y2, track_id_float = track
             track_id = int(track_id_float)
             
+            # --- DUMPER / SPEED BREAKER REJECTION LOGIC ---
+            
+            # 1. Update Track History (Persistence)
+            if track_id not in track_history:
+                track_history[track_id] = 0
+            track_history[track_id] += 1
+            
+            # 2. Geometry Checks
+            bbox_w = x2 - x1
+            bbox_h = y2 - y1
+            frame_area = width * height
+            bbox_area = bbox_w * bbox_h
+            
+            area_ratio = bbox_area / frame_area
+            aspect_ratio = bbox_w / bbox_h if bbox_h > 0 else 0
+            
+            # Check 1: Area too large? (Dumper)
+            if area_ratio > 0.25:
+                continue # Reject as dumper
+                
+            # Check 2: Aspect ratio too wide? (Speed breaker/Dumper)
+            if aspect_ratio > 3.0:
+                continue # Reject
+                
+            # Check 3: Persistence too long? (Static object/Dumper)
+            if track_history[track_id] > 10:
+                continue # Reject
+            
+            # ---------------------------------------------
+
             # Check for crossing / severity calculation
             cy = (y1 + y2) / 2
             
-            # Calculate and log severity only if passing the reference line and not already logged
+            # Only proceed if passing reference line and VALID pothole (not dumper)
             if cy >= ref_y and track_id not in logged_ids:
-                bbox_w = x2 - x1
-                bbox_h = y2 - y1
-                severity_val = calculate_severity(bbox_w, bbox_h, width, height)
                 
-                # Find best confidence for logging
+                # Retrieve Best Confidence for this ID
                 best_conf_log = 0.0
                 max_iou_log = 0
                 for det in detections:
@@ -199,7 +302,25 @@ def main():
                         max_iou_log = inter/union
                         best_conf_log = dconf
                 
-                csv_writer.writerow([track_id, severity_val, f"{best_conf_log:.2f}"])
+                # CONFIDENCE GATE
+                if best_conf_log < CONF_THRESHOLD:
+                    continue # Ignore completely
+                
+                # --- SENSOR QUERY (BURST) ---
+                # Only query sensors now that we have a confirmed valid pothole
+                peak_jerk, rtc_date, rtc_time, lat, lon = get_sensor_burst(SENSOR_URL)
+                
+                # --- SEVERITY CALCULATION ---
+                severity_val = calculate_severity(best_conf_log, peak_jerk)
+                
+                # --- CSV LOGGING ---
+                csv_writer.writerow([
+                    rtc_date, rtc_time, frame_idx, track_id, f"{best_conf_log:.2f}",
+                    bbox_area, f"{aspect_ratio:.2f}", f"{peak_jerk:.2f}", f"{severity_val:.2f}",
+                    lat, lon
+                ])
+                csv_file.flush() # Ensure data is written immediately
+                
                 logged_ids.add(track_id)
                 final_severities[track_id] = severity_val
 
