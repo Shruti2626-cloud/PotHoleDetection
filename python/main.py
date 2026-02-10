@@ -12,10 +12,18 @@ from pothole_detection.detector import PotholeDetector
 from pothole_detection.tracker import PotholeTracker
 
 # --- CONFIGURATION ---
-LIVE_MODE = True  # Set to True to use ESP32-CAM, False for video file
-ESP32_IP = "192.168.137.100" # <--- IMPORTANT: UPDATE THIS IP AFTER CHECKING SERIAL MONITOR
-ESP32_STREAM_URL = f"http://{ESP32_IP}:81/stream"
-ESP32_SENSOR_URL = f"http://{ESP32_IP}/sensors"
+LIVE_MODE = True  # Set to True to use ESP32 devices, False for video file
+
+# ⚠️ IMPORTANT: UPDATE THESE IP ADDRESSES TO MATCH YOUR ESP32 DEVICES
+# After uploading firmware, check Serial Monitor to get the correct IP addresses
+# Both ESP32 devices must be on the same WiFi network as this computer
+
+# DUAL ESP32 ARCHITECTURE
+ESP32_CAM_IP = "192.168.137.100"      # <--- ESP32-CAM Vision Node IP (Port 81)
+ESP32_SENSOR_IP = "192.168.137.101"   # <--- ESP32 Sensor Node IP (Port 80)
+
+ESP32_STREAM_URL = f"http://{ESP32_CAM_IP}:81/stream"  # Vision Node (port 81)
+ESP32_SENSOR_URL = f"http://{ESP32_SENSOR_IP}/query"    # Sensor Node (port 80)
 
 # --- Path Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,9 +52,16 @@ REFERENCE_LINE_RATIO = 0.75
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def get_sensor_burst(url: str, burst_count: int = 5) -> Tuple[float, str, str, float, float]:
+def get_sensor_burst(url: str, pothole_id: int, burst_count: int = 5) -> Tuple[float, str, str, float, float]:
     """
-    Fetches a burst of sensor data to compute peak jerk and get RTC time.
+    EVENT-DRIVEN sensor query for dual ESP32 architecture.
+    Queries ESP32 Sensor Node multiple times to compute peak jerk.
+    
+    Args:
+        url: ESP32 Sensor Node endpoint (http://<IP>/query)
+        pothole_id: Unique pothole ID from SORT tracker
+        burst_count: Number of sensor reads for jerk calculation
+    
     Returns: (peak_jerk, date_str, time_str, lat, lon)
     """
     accel_magnitudes = []
@@ -57,45 +72,63 @@ def get_sensor_burst(url: str, burst_count: int = 5) -> Tuple[float, str, str, f
     last_lat = 0.0
     last_lon = 0.0
 
-    print(f"  > Querying sensors (Burst {burst_count})...")
+    print(f"  > Querying ESP32 Sensor Node (Pothole ID: {pothole_id}, Burst: {burst_count})...")
     
     for _ in range(burst_count):
         try:
             if LIVE_MODE:
-                with urllib.request.urlopen(url, timeout=0.5) as response:
+                # Query ESP32 Sensor Node with pothole_id parameter
+                query_url = f"{url}?pothole_id={pothole_id}"
+                with urllib.request.urlopen(query_url, timeout=0.5) as response:
                     data = json.loads(response.read().decode())
-                    # Data format: {"ax":0.00,"ay":0.00,"az":0.00,"lat":0.000000,"lon":0.000000,"datetime":"..."}
+                    
+                    # New JSON format from ESP32 Sensor Node:
+                    # {"pothole_id":42,"timestamp":"2026-02-10T14:23:45","latitude":28.704060,
+                    #  "longitude":77.102493,"ax":0.12,"ay":-0.05,"az":9.81,
+                    #  "mpu_ok":true,"gps_ok":true,"rtc_ok":true}
+                    
+                    # Check sensor health
+                    if not data.get('mpu_ok', False):
+                        print(f"    Warning: MPU6050 not responding")
+                    
                     ax = data.get('ax', 0.0)
                     ay = data.get('ay', 0.0)
                     az = data.get('az', 0.0)
                     accel_magnitudes.append(math.sqrt(ax**2 + ay**2 + az**2))
                     
-                    dt_str = data.get('datetime', "2000-01-01 00:00:00")
-                    if " " in dt_str:
-                        last_date, last_time = dt_str.split(" ")
+                    # Parse ISO8601 timestamp
+                    timestamp_str = data.get('timestamp', "2000-01-01T00:00:00")
+                    if "T" in timestamp_str:
+                        last_date, last_time = timestamp_str.split("T")
                     
-                    last_lat = data.get('lat', 0.0)
-                    last_lon = data.get('lon', 0.0)
+                    last_lat = data.get('latitude', 0.0)
+                    last_lon = data.get('longitude', 0.0)
+                    
+                    # Log GPS status
+                    if not data.get('gps_ok', False):
+                        print(f"    Warning: GPS fix not available")
+                    
             else:
                 # Simulated Data
                 accel_magnitudes.append(9.8 + (0.5 * _))
                 time.sleep(0.05)
             
         except Exception as e:
-            print(f"Sensor read error: {e}")
+            print(f"    Sensor read error: {e}")
             pass
 
-    # Compute Jerk
+    # Compute Jerk (rate of change of acceleration)
     if len(accel_magnitudes) < 2:
         peak_jerk = 0.0
     else:
         jerks = []
-        dt = 0.05 # Approximate dt
+        dt = 0.05  # Approximate dt between reads
         for i in range(1, len(accel_magnitudes)):
             j = abs(accel_magnitudes[i] - accel_magnitudes[i-1]) / dt
             jerks.append(j)
         peak_jerk = max(jerks) if jerks else 0.0
 
+    print(f"  > Peak Jerk: {peak_jerk:.2f} m/s³")
     return peak_jerk, last_date, last_time, last_lat, last_lon
 
 
@@ -290,8 +323,9 @@ def main():
                 if best_conf_log < CONF_THRESHOLD:
                     continue
 
-                # --- QUERY SENSOR (REAL OR MOCK) ---
-                peak_jerk, rtc_date, rtc_time, lat, lon = get_sensor_burst(ESP32_SENSOR_URL)
+                # --- QUERY SENSOR NODE (EVENT-DRIVEN) ---
+                # Only called after SORT + Validity Filter approval
+                peak_jerk, rtc_date, rtc_time, lat, lon = get_sensor_burst(ESP32_SENSOR_URL, track_id)
                 
                 severity_val = calculate_severity(best_conf_log, peak_jerk)
                 
