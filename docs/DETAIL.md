@@ -70,8 +70,8 @@ IPDS is an **automated, real-time pothole detection and assessment system** that
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    VEHICLE DASHBOARD                         │
-│                                                              │
+│                    VEHICLE DASHBOARD                        │
+│                                                             │
 │  ┌──────────────┐                    ┌──────────────┐       │
 │  │ ESP32-CAM    │                    │ ESP32 Sensor │       │
 │  │ Vision Node  │                    │ Node         │       │
