@@ -31,7 +31,7 @@ IPDS combines computer vision, multi-object tracking, and sensor fusion to detec
 
 ```mermaid
 graph TB
-    subgraph "ESP32-CAM Vision Node"
+    subgraph "ESP32-CAM Vision node"
         A[OV2640 Camera] --> B[MJPEG Encoder]
         B --> C[WiFi Stream]
     end
