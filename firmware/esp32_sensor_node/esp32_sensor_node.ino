@@ -1,8 +1,44 @@
 /*************************************************
  *  ESP32 SENSOR NODE (Dual ESP32 Architecture)
  *  
- *  See docs/HARDWARE.md and docs/DETAIL.md for wiring
- *  and system architecture details.
+ *  RESPONSIBILITIES:
+ *  - Event-driven sensor reading (only when queried)
+ *  - MPU6050 accelerometer data
+ *  - NEO-6M GPS coordinates
+ *  - DS3231 RTC timestamps
+ *  - Return structured JSON response
+ *  
+ *  DOES NOT:
+ *  - Stream continuously
+ *  - Process video
+ *  - Make decisions
+ *  - Store logs
+ *  
+ *  ENDPOINTS:
+ *  - http://<IP>/query?pothole_id=<ID>  → JSON sensor data
+ *  - http://<IP>/health                 → Health check
+ *  
+ *  WIRING:
+ *  MPU6050:
+ *    - SDA → GPIO 21
+ *    - SCL → GPIO 22
+ *    - VCC → 3.3V
+ *    - GND → GND
+ *  
+ *  NEO-6M GPS:
+ *    - TX → GPIO 16 (RX2)
+ *    - RX → GPIO 17 (TX2)
+ *    - VCC → 3.3V
+ *    - GND → GND
+ *  
+ *  DS3231 RTC:
+ *    - SDA → GPIO 21 (shared I2C)
+ *    - SCL → GPIO 22 (shared I2C)
+ *    - VCC → 3.3V
+ *    - GND → GND
+ *  
+ *  Author: Pothole Detection System
+ *  Version: 2.0 (Dual ESP32 Architecture)
  *************************************************/
 
 #include <Wire.h>
@@ -14,8 +50,8 @@
 #include <Adafruit_Sensor.h>
 
 /* ================= WIFI CONFIGURATION ================= */
-const char* ssid = "Sanskar's S24 FE";
-const char* password = "q7ptka3g42g5xay";
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
 
 /* ================= PIN CONFIGURATION ================= */
 #define I2C_SDA 21
@@ -184,7 +220,7 @@ void setup() {
   
   // Try 0x69 first (AD0 connected to 3.3V - RECOMMENDED to avoid RTC conflict)
   if (mpu.begin(0x69, &Wire)) {
-    Serial.println("FOUND at 0x69 (AD0=HIGH, no conflict with RTC)");
+    Serial.println("FOUND at 0x69 ✓ (AD0=HIGH, no conflict with RTC)");
     mpuOK = true;
     
     // Configure MPU6050
@@ -197,8 +233,8 @@ void setup() {
   } 
   // Fallback to 0x68 (AD0 floating or GND - WARNING: Conflicts with RTC!)
   else if (mpu.begin(0x68, &Wire)) {
-    Serial.println("FOUND at 0x68 (AD0=LOW)");
-    Serial.println("  WARNING: I2C address conflict with RTC DS3231");
+    Serial.println("FOUND at 0x68 ⚠️ (AD0=LOW)");
+    Serial.println("  WARNING: I2C address conflict with RTC DS3231!");
     Serial.println("  SOLUTION: Connect MPU6050 AD0 pin to 3.3V");
     mpuOK = true;
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
@@ -206,7 +242,7 @@ void setup() {
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
   } 
   else {
-    Serial.println("NOT FOUND (ERROR)");
+    Serial.println("NOT FOUND ✗");
     Serial.println("  Check: Wiring, I2C address, power");
     Serial.println("  Tip: Connect AD0 to 3.3V for address 0x69");
     mpuOK = false;
@@ -226,7 +262,7 @@ void setup() {
     }
     if (gps.location.isValid()) {
       gpsOK = true;
-      Serial.printf("  GPS FIX ACQUIRED: %.6f, %.6f\n", 
+      Serial.printf("  GPS FIX ACQUIRED: %.6f, %.6f ✓\n", 
                     gps.location.lat(), gps.location.lng());
       break;
     }
@@ -239,7 +275,7 @@ void setup() {
   /* RTC INITIALIZATION */
   Serial.print("Initializing DS3231 RTC... ");
   if (rtc.begin()) {
-    Serial.println("FOUND");
+    Serial.println("FOUND ✓");
     rtcOK = true;
     
     if (rtc.lostPower()) {
@@ -252,7 +288,7 @@ void setup() {
                   now.year(), now.month(), now.day(),
                   now.hour(), now.minute(), now.second());
   } else {
-    Serial.println("NOT FOUND (ERROR)");
+    Serial.println("NOT FOUND ✗");
     Serial.println("  Check: Wiring, I2C address (0x68)");
     rtcOK = false;
   }
@@ -269,14 +305,14 @@ void setup() {
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(" CONNECTED");
+    Serial.println(" CONNECTED ✓");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
     Serial.print("Signal Strength: ");
     Serial.print(WiFi.RSSI());
     Serial.println(" dBm");
   } else {
-    Serial.println(" FAILED");
+    Serial.println(" FAILED ✗");
     Serial.println("WiFi connection failed - check SSID/password");
   }
   

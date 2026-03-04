@@ -179,7 +179,7 @@ OV2640 Camera: Built-in to ESP32-CAM module
 Power: 5V → 5V pin, GND → GND pin
 ```
 
-**Firmware**: `ESP_32_Code/esp32_cam_vision_node.ino`
+**Firmware**: `firmware/esp32_cam_vision_node.ino`
 
 ### 3.2 ESP32 Sensor Node
 
@@ -234,7 +234,7 @@ SDA → GPIO 21 (shared with MPU6050)
 SCL → GPIO 22 (shared with MPU6050)
 ```
 
-**Firmware**: `ESP_32_Code/esp32_sensor_node.ino`
+**Firmware**: `firmware/esp32_sensor_node.ino`
 
 ### 3.3 Python Processing Hub
 
@@ -256,7 +256,7 @@ SCL → GPIO 22 (shared with MPU6050)
 
 ### 4.1 Python Modules
 
-#### `src/main.py`
+#### `python/main.py`
 **Purpose**: Main orchestration script  
 **Key Functions**:
 - `get_sensor_burst()`: Query ESP32 Sensor Node
@@ -270,7 +270,7 @@ SCL → GPIO 22 (shared with MPU6050)
 - json: Parse sensor responses
 - csv: Log pothole data
 
-#### `src/pothole_detection/detector.py`
+#### `python/pothole_detection/detector.py`
 **Purpose**: YOLOv8 wrapper  
 **Key Class**: `PotholeDetector`  
 **Methods**:
@@ -279,7 +279,7 @@ SCL → GPIO 22 (shared with MPU6050)
 
 **Output Format**: `[[x1, y1, x2, y2, confidence], ...]`
 
-#### `src/pothole_detection/tracker.py`
+#### `python/pothole_detection/tracker.py`
 **Purpose**: SORT tracker wrapper  
 **Key Class**: `PotholeTracker`  
 **Methods**:
@@ -289,7 +289,7 @@ SCL → GPIO 22 (shared with MPU6050)
 
 **Output Format**: `[[x1, y1, x2, y2, track_id], ...]`
 
-#### `src/pothole_detection/sort.py`
+#### `python/pothole_detection/sort.py`
 **Purpose**: SORT algorithm implementation  
 **Key Classes**:
 - `KalmanBoxTracker`: Kalman filter for single object
@@ -779,7 +779,7 @@ date,time,frame_id,pothole_id,confidence,bounding_box_area,aspect_ratio,peak_jer
 ### 9.3 Flash ESP32 Firmware
 
 #### ESP32-CAM Vision Node
-1. Open `ESP_32_Code/esp32_cam_vision_node.ino`
+1. Open `firmware/esp32_cam_vision_node.ino`
 2. Update WiFi credentials (lines 23-24)
 3. Tools → Board → "AI Thinker ESP32-CAM"
 4. Tools → Upload Speed → 115200
@@ -791,7 +791,7 @@ date,time,frame_id,pothole_id,confidence,bounding_box_area,aspect_ratio,peak_jer
 10. Note IP address
 
 #### ESP32 Sensor Node
-1. Open `ESP_32_Code/esp32_sensor_node.ino`
+1. Open `firmware/esp32_sensor_node.ino`
 2. Update WiFi credentials (lines 40-41)
 3. Tools → Board → "ESP32 Dev Module"
 4. Tools → Upload Speed → 115200
@@ -858,7 +858,7 @@ WiFi.begin(ssid, password);
 
 ### 10.2 Python Configuration
 
-**File**: `src/main.py`  
+**File**: `python/main.py`  
 **Lines**: 14-22
 
 ```python
@@ -941,7 +941,7 @@ http://192.168.1.101/query?pothole_id=1
 
 #### Python System
 ```bash
-python src/main.py
+python python/main.py
 ```
 
 **Expected Output**:
@@ -965,7 +965,7 @@ Press 'q' to stop.
 
 1. **Mount Hardware**: Secure ESP32 devices on vehicle dashboard
 2. **Power On**: Connect to mobile hotspot or car WiFi
-3. **Start System**: Run `python src/main.py` on laptop
+3. **Start System**: Run `python python/main.py` on laptop
 4. **Drive Route**: Test on roads with known potholes
 5. **Collect Data**: Let system run for 10-15 minutes
 6. **Review Logs**: Check CSV for detected potholes
@@ -1203,19 +1203,19 @@ trackers = {cam['name']: PotholeTracker() for cam in ESP32_CAMERAS}
 
 | File | Purpose | Lines | Key Functions |
 |------|---------|-------|---------------|
-| `ESP_32_Code/esp32_cam_vision_node.ino` | Vision Node firmware | 250 | `stream_handler()`, `setup()` |
-| `ESP_32_Code/esp32_sensor_node.ino` | Sensor Node firmware | 350 | `handleQuery()`, `setup()` |
-| `ESP_32_Code/camera_pins.h` | Camera pin definitions | 50 | Pin macros |
-| `ESP_32_Code/esp_32_code.ino` | Legacy (single ESP32) | 284 | Deprecated |
+| `firmware/esp32_cam_vision_node.ino` | Vision Node firmware | 250 | `stream_handler()`, `setup()` |
+| `firmware/esp32_sensor_node.ino` | Sensor Node firmware | 350 | `handleQuery()`, `setup()` |
+| `firmware/camera_pins.h` | Camera pin definitions | 50 | Pin macros |
+
 
 ### 15.2 Python Files
 
 | File | Purpose | Lines | Key Classes/Functions |
 |------|---------|-------|----------------------|
-| `src/main.py` | Main orchestration | 328 | `main()`, `get_sensor_burst()`, `calculate_severity()` |
-| `src/pothole_detection/detector.py` | YOLOv8 wrapper | 48 | `PotholeDetector` |
-| `src/pothole_detection/tracker.py` | SORT wrapper | 49 | `PotholeTracker` |
-| `src/pothole_detection/sort.py` | SORT algorithm | 300+ | `Sort`, `KalmanBoxTracker` |
+| `python/main.py` | Main orchestration | 328 | `main()`, `get_sensor_burst()`, `calculate_severity()` |
+| `python/pothole_detection/detector.py` | YOLOv8 wrapper | 48 | `PotholeDetector` |
+| `python/pothole_detection/tracker.py` | SORT wrapper | 49 | `PotholeTracker` |
+| `python/pothole_detection/sort.py` | SORT algorithm | 300+ | `Sort`, `KalmanBoxTracker` |
 | `detector.py` | Root detector (symlink) | 48 | Same as above |
 | `tracker.py` | Root tracker (symlink) | 49 | Same as above |
 | `sort.py` | Root SORT (symlink) | 300+ | Same as above |

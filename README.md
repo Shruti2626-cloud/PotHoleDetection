@@ -194,7 +194,7 @@ severity = 0.7 × confidence + 0.3 × (jerk_norm)²
 - OV2640 Camera: Built-in to module
 - Power: 5V 2A stable supply
 
-**Firmware**: `ESP_32_Code/esp32_cam_vision_node.ino`
+**Firmware**: `firmware/esp32_cam_vision_node/esp32_cam_vision_node.ino`
 
 ### ESP32 Sensor Node
 
@@ -219,7 +219,7 @@ DS3231 RTC:
   GND → GND
 ```
 
-**Firmware**: `ESP_32_Code/esp32_sensor_node.ino`
+**Firmware**: `firmware/esp32_sensor_node/esp32_sensor_node.ino`
 
 ---
 
@@ -228,7 +228,7 @@ DS3231 RTC:
 ### 1. Flash ESP32 Devices
 
 **ESP32-CAM**:
-1. Open `ESP_32_Code/esp32_cam_vision_node.ino`
+1. Open `firmware/esp32_cam_vision_node/esp32_cam_vision_node.ino`
 2. Update WiFi credentials (lines 23-24)
 3. Select Board: "AI Thinker ESP32-CAM"
 4. Upload firmware
@@ -236,7 +236,7 @@ DS3231 RTC:
 
 **ESP32 Sensor Node**:
 1. Install libraries: Adafruit MPU6050, TinyGPSPlus, RTClib
-2. Open `ESP_32_Code/esp32_sensor_node.ino`
+2. Open `firmware/esp32_sensor_node/esp32_sensor_node.ino`
 3. Update WiFi credentials (lines 40-41)
 4. Select Board: "ESP32 Dev Module"
 5. Upload firmware
@@ -244,17 +244,17 @@ DS3231 RTC:
 
 ### 2. Configure Python System
 
-Update `src/main.py` with your ESP32 IP addresses:
+Update `python/main.py` with your ESP32 IP addresses:
 
 ```python
-ESP32_CAM_IP = "192.168.1.100"      # Vision Node
-ESP32_SENSOR_IP = "192.168.1.101"   # Sensor Node
+ESP32_CAM_IP = "192.168.137.100"    # Vision Node (Check Serial Monitor!)
+ESP32_SENSOR_IP = "192.168.137.101" # Sensor Node (Check Serial Monitor!)
 ```
 
 ### 3. Run Detection System
 
 ```bash
-python src/main.py
+python python/main.py
 ```
 
 Press `q` to stop processing.
@@ -288,11 +288,12 @@ date,time,frame_id,pothole_id,confidence,bounding_box_area,aspect_ratio,peak_jer
 
 ```
 Pot Hole Detection/
-├── ESP_32_Code/                     # All ESP32 firmware
-│   ├── esp32_cam_vision_node.ino    # Vision Node firmware (v2)
-│   ├── esp32_sensor_node.ino        # Sensor Node firmware (v2)
-│   └── camera_pins.h                # Camera pin definitions (legacy)
-├── src/
+├── firmware/                        # All ESP32 firmware
+│   ├── esp32_cam_vision_node/       # Vision Node firmware
+│   │   └── esp32_cam_vision_node.ino
+│   └── esp32_sensor_node/           # Sensor Node firmware
+│       └── esp32_sensor_node.ino
+├── python/                          # Main Python code
 │   ├── main.py                      # Main processing script
 │   └── pothole_detection/
 │       ├── detector.py              # YOLOv8 wrapper

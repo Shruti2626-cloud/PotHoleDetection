@@ -17,6 +17,7 @@ LIVE_MODE = True  # Set to True to use ESP32 devices, False for video file
 # IMPORTANT: UPDATE THESE IP ADDRESSES TO MATCH YOUR ESP32 DEVICES
 # After uploading firmware, check Serial Monitor to get the correct IP addresses
 # Both ESP32 devices must be on the same WiFi network as this computer
+# NOTE: Ensure these IP addresses match what is shown in the Serial Monitor!
 
 # DUAL ESP32 ARCHITECTURE
 ESP32_CAM_IP = "192.168.137.100"      # <--- ESP32-CAM Vision Node IP (Port 81)

@@ -1,8 +1,24 @@
 /*************************************************
  *  ESP32-CAM VISION NODE (Dual ESP32 Architecture)
  *  
- *  See docs/HARDWARE.md and docs/DETAIL.md for wiring
- *  and system architecture details.
+ *  RESPONSIBILITIES:
+ *  - Camera capture (OV2640)
+ *  - MJPEG video streaming over WiFi
+ *  
+ *  DOES NOT:
+ *  - Read any sensors
+ *  - Calculate severity
+ *  - Store data
+ *  
+ *  ENDPOINTS:
+ *  - http://<IP>:81/stream  → MJPEG video stream
+ *  
+ *  WIRING:
+ *  - OV2640 Camera: Built-in to ESP32-CAM module
+ *  - Power: 5V 2A stable supply
+ *  
+ *  Author: Pothole Detection System
+ *  Version: 2.0 (Dual ESP32 Architecture)
  *************************************************/
 
 #include "esp_camera.h"
@@ -31,8 +47,8 @@
 #define PCLK_GPIO_NUM     22
 
 /* ================= WIFI CONFIGURATION ================= */
-const char* ssid = "Sanskar's S24 FE";
-const char* password = "q7ptka3g42g5xay";
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
 
 /* ================= STREAM CONFIGURATION ================= */
 #define PART_BOUNDARY "123456789000000000000987654321"
@@ -138,9 +154,9 @@ void startStreamServer() {
   if (httpd_start(&stream_httpd, &config) == ESP_OK) {
     httpd_register_uri_handler(stream_httpd, &stream_uri);
     httpd_register_uri_handler(stream_httpd, &health_uri);
-    Serial.println("SUCCESS");
+    Serial.println("SUCCESS ✓");
   } else {
-    Serial.println("FAILED");
+    Serial.println("FAILED ✗");
   }
 }
 
@@ -158,7 +174,7 @@ void setup() {
   Serial.print("Initializing watchdog timer (30s)... ");
   esp_task_wdt_init(30, true);  // 30 second timeout
   esp_task_wdt_add(NULL);       // Add current task
-  Serial.println("OK");
+  Serial.println("OK ✓");
   
   /* CAMERA INITIALIZATION */
   Serial.print("Initializing OV2640 camera... ");
@@ -192,13 +208,13 @@ void setup() {
   
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("FAILED (Error: 0x%x)\n", err);
+    Serial.printf("FAILED ✗ (Error: 0x%x)\n", err);
     Serial.println("Camera init failed - system halted");
     while (true) {
       delay(1000);
     }
   }
-  Serial.println("SUCCESS");
+  Serial.println("SUCCESS ✓");
   
   // Camera sensor settings
   sensor_t * s = esp_camera_sensor_get();
@@ -240,14 +256,14 @@ void setup() {
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(" CONNECTED");
+    Serial.println(" CONNECTED ✓");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
     Serial.print("Signal Strength: ");
     Serial.print(WiFi.RSSI());
     Serial.println(" dBm");
   } else {
-    Serial.println(" FAILED");
+    Serial.println(" FAILED ✗");
     Serial.println("WiFi connection failed - check SSID/password");
     Serial.println("System will continue but streaming won't work");
   }
