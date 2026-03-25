@@ -73,27 +73,28 @@ The following tables define the strict pin-to-pin connections required to assemb
 
 ### MPU6050 Accelerometer Connections
 
-| Component | Pin | ESP32-CAM Pin | Purpose |
+| Component | Pin | ESP32 Pin     | Purpose |
 | :--- | :--- | :--- | :--- |
 | MPU6050 | VCC | 3.3V or 5V* | Power supply (*Depends on MPU module's onboard regulator) |
 | MPU6050 | GND | GND | Common Ground |
 | MPU6050 | SDA | GPIO 21 | I2C Data line (Shared) |
 | MPU6050 | SCL | GPIO 22 | I2C Clock line (Shared) |
+| MPU6050 | AD0 | 5V            | I2C Address selection (0x69) |
 
 ### NEO-6M GPS Module Connections
 
-| Component | Pin | ESP32-CAM Pin | Purpose |
+| Component | Pin | ESP32 Pin     | Purpose |
 | :--- | :--- | :--- | :--- |
-| NEO-6M | VCC | 5V | Power supply |
+| NEO-6M | VCC | 3.3V / 5V | Power supply |
 | NEO-6M | GND | GND | Common Ground |
-| NEO-6M | TX | GPIO 12/13/14* | UART Transmit to ESP32 Receive |
-| NEO-6M | RX | GPIO 15* | UART Receive from ESP32 Transmit (Optional, usually TX only is needed) |
+| NEO-6M | TX | GPIO 16 | UART Transmit to ESP32 Receive |
+| NEO-6M | RX | GPIO 17 | UART Receive from ESP32 Transmit |
 
 *(Note: ESP32-CAM GPIO allocation is tight; specific software-serial or reassigned hardware UART pins must be verified against the SD card usage, typically avoiding GPIO 4, 12, 13, 14, 15 if SDMMC is used in 4-bit mode. If using 1-bit SD mode, these pins are freed up).*
 
 ### DS3231 RTC Module Connections
 
-| Component | Pin | ESP32-CAM Pin | Purpose |
+| Component | Pin | ESP32 Pin     | Purpose |
 | :--- | :--- | :--- | :--- |
 | DS3231 | VCC | 3.3V / 5V | Power supply |
 | DS3231 | GND | GND | Common Ground |
