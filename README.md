@@ -102,4 +102,7 @@ A video window will open showing the live feed with bounding boxes and tracking 
 - **Crowdsourcing Incentives:** Implement gamified "micro-bounties" (e.g., toll credits or tax rebates) to incentivize citizens to run the detection app while commuting.
 
 ## Contributors
-- **Sanskar Tiwari** - *Core Architecture & ML Pipeline*
+- **Sanskar Tiwari**
+- **Shruti Shinde**
+- **Swarali Bansod**
+- **Eshwari Kognole** 
