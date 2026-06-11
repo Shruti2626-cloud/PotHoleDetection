@@ -1,5 +1,6 @@
 import cv2
 import os
+import threading
 import glob
 import csv
 import urllib.request
@@ -41,8 +42,8 @@ LIVE_MODE = True  # Set to True to use ESP32 devices, False for video file
 
 # DUAL ESP32 ARCHITECTURE CONFIGURATION
 # Configure ESP32 IPs in the .env file in the project root
-ESP32_CAM_IP = os.getenv("ESP32_CAM_IP", "10.183.109.54")
-ESP32_SENSOR_IP = os.getenv("ESP32_SENSOR_IP", "10.183.109.215")
+ESP32_CAM_IP = os.getenv("ESP32_CAM_IP", "10.71.42.54")
+ESP32_SENSOR_IP = os.getenv("ESP32_SENSOR_IP", "10.71.42.215")
 
 ESP32_STREAM_URL = f"http://{ESP32_CAM_IP}:81/stream"  # Vision Node (port 81)
 ESP32_SENSOR_URL = f"http://{ESP32_SENSOR_IP}/query"    # Sensor Node (port 80)
@@ -249,42 +250,79 @@ def main():
         print(f"Failed to initialize components: {e}")
         return
 
-    # 3. Video Capture
+    # 3. Stream Setup
     if LIVE_MODE:
-        print("Using URL stream reader...")
-        BOUNDARY = b"123456789000000000000987654321"
-        def open_stream():
-            req = urllib.request.Request(video_source)
-            req.add_header("Connection", "close")
-            return urllib.request.urlopen(req, timeout=30)
+        class ThreadedMJPEGStreamReader:
+            def __init__(self, url):
+                self.url = url
+                self.frame = None
+                self.stopped = False
+                self.lock = threading.Lock()
+                self.thread = threading.Thread(target=self.update, args=())
+                self.thread.daemon = True
 
-        stream = None
-        for attempt in range(5):
-            try:
-                stream = open_stream()
-                print("  > Stream connected!")
-                break
-            except Exception as e:
-                print(f"  > Connection attempt {attempt+1} failed: {e}. Retrying in 2s...")
-                time.sleep(2)
-        if stream is None:
-            print("Error: Could not connect to stream after 5 attempts.")
-            return
+            def start(self):
+                self.thread.start()
+                return self
 
-        bytes_data = bytes()
-        width, height = 320, 240 # QVGA resolution from firmware
+            def update(self):
+                print(f"Stream thread started for: {self.url}")
+                while not self.stopped:
+                    try:
+                        req = urllib.request.Request(self.url)
+                        req.add_header("Connection", "close")
+                        with urllib.request.urlopen(req, timeout=5) as stream:
+                            bytes_data = bytes()
+                            while not self.stopped:
+                                bytes_data += stream.read(4096)
+                                start = bytes_data.find(b'\xff\xd8')
+                                end = bytes_data.find(b'\xff\xd9', start)
+                                if start != -1 and end != -1:
+                                    jpg = bytes_data[start:end + 2]
+                                    bytes_data = bytes_data[end + 2:]
+                                    img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                                    if img is not None:
+                                        with self.lock:
+                                            self.frame = img
+                                    # Clear old data if buffer is too large
+                                    if len(bytes_data) > 1024 * 1024:
+                                        bytes_data = bytes()
+                    except Exception as e:
+                        print(f"Stream thread error: {e}. Reconnecting...")
+                        time.sleep(1)
+
+            def read(self):
+                with self.lock:
+                    return self.frame
+
+            def stop(self):
+                self.stopped = True
+                self.thread.join(timeout=1)
+
+        print("Starting threaded stream reader...")
+        stream_reader = ThreadedMJPEGStreamReader(video_source).start()
+        
+        # Wait for first frame
+        timeout = time.time() + 10
+        while stream_reader.read() is None:
+            if time.time() > timeout:
+                print("Error: Timeout waiting for first frame from stream.")
+                return
+            time.sleep(0.1)
+        
+        print("  > Stream connected!")
+        width, height = 320, 240 # Default QVGA
         fps = 10.0
     else:
         cap = cv2.VideoCapture(video_source)
         if not cap.isOpened():
             print(f"Error: Could not open source {video_source}")
-            print("Check IP address or file path.")
             return
-
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps == 0: fps = 10.0 # Default fallback for streams
+        if fps == 0: fps = 10.0
+
 
     # 4. Output Setup
     os.makedirs(os.path.dirname(OUTPUT_VIDEO_PATH), exist_ok=True)
@@ -312,36 +350,15 @@ def main():
     frame_idx = 0
     while True:
         if LIVE_MODE:
-            try:
-                bytes_data += stream.read(4096)
-                # Search for JPEG start and end markers
-                start = bytes_data.find(b'\xff\xd8')
-                end = bytes_data.find(b'\xff\xd9', start)
-                if start != -1 and end != -1:
-                    jpg = bytes_data[start:end + 2]
-                    bytes_data = bytes_data[end + 2:]
-                    frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
-                    if frame is None:
-                        continue
-                else:
-                    # Need more data; keep buffering
-                    # Prevent buffer from growing unbounded
-                    if len(bytes_data) > 1024 * 1024:
-                        bytes_data = bytes_data[-4096:]
-                    continue
-            except Exception as e:
-                print(f"Stream error: {e}. Reconnecting...")
-                time.sleep(2)
-                try:
-                    stream = open_stream()
-                    bytes_data = bytes()
-                except Exception as e2:
-                    print(f"  Reconnect failed: {e2}")
+            frame = stream_reader.read()
+            if frame is None:
+                time.sleep(0.01)
                 continue
         else:
             ret, frame = cap.read()
             if not ret:
                 break
+
         
         
         # Initialize actual frame dimensions once frame is loaded
@@ -422,18 +439,36 @@ def main():
         cv2.putText(frame, f"Total Unique Potholes: {total_potholes}", (10, 20), FONT, 0.5, (0, 0, 255), 1)
 
         out.write(frame)
-        display_frame = cv2.resize(frame, (width * 2, height * 2))
-        cv2.imshow('Pothole Detection', display_frame) # Enable display
+        
+        # 4. Display (Optional / Try-Except to avoid crash during data collection)
+        try:
+            display_frame = cv2.resize(frame, (width * 2, height * 2))
+            cv2.imshow('Pothole Detection', display_frame) # Enable display
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        except cv2.error as e:
+            # Fallback if display fails but continue processing/saving
+            if "not implemented" in str(e):
+                # Only warn once or just continue
+                pass
+            else:
+                print(f"Display error: {e}")
+            
+            # Allow 'q' to work via console if possible, or just continue
+            # For now, we skip waitKey if imshow fails to avoid potential blocking
+            pass
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
             
     if not LIVE_MODE:
         cap.release()
+    else:
+        stream_reader.stop()
+        
     out.release()
     csv_file.close()
     cv2.destroyAllWindows()
     print("Processing complete.")
+
 
 if __name__ == "__main__":
     main()
